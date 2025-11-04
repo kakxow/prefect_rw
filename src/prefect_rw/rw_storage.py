@@ -288,13 +288,14 @@ class RemoteStorageScript:  # noqa: PLW1641
             create_call(subprocess.run, init_command, cwd=self.destination, env={**os.environ}),
         )
         p.check_returncode()
-        venv_command = ["uv", "venv", "--clear", "--link-mode", "clone"]
+        venv_command = ["uv", "venv", "--clear", "--link-mode", "copy"]
         p = await from_async.wait_for_call_in_new_thread(
             create_call(subprocess.run, venv_command, cwd=self.destination, env={**os.environ}),
         )
         p.check_returncode()
 
-        sync_command = ["uv", "sync", "--link-mode", "clone", "--active", "--script", self._path.name]
+        sync_command = ["uv", "sync", "--link-mode", "copy", "--active", "--script", self._path.name]
+        env = {**os.environ, "VIRTUAL_ENV": (self.destination / ".venv").as_posix()}
         p = await from_async.wait_for_call_in_new_thread(
             create_call(subprocess.run, sync_command, env=env, cwd=self.destination),
         )

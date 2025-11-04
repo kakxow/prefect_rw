@@ -11,7 +11,7 @@ from prefect.deployments.steps.core import run_steps
 from prefect.workers.process import ProcessJobConfiguration, ProcessWorker, ProcessWorkerResult
 
 if TYPE_CHECKING:
-    from prefect.server.schemas.core import FlowRun
+    from prefect.client.schemas.objects import FlowRun
 
 
 error_msg_deployment_id = "Deployment ID not found"
