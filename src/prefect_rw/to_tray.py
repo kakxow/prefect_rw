@@ -110,7 +110,3 @@ def main(
 
     icon.run()
     icon = None
-
-
-if __name__ == "__main__":
-    main()

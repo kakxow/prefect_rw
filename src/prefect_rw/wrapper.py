@@ -22,7 +22,7 @@ def _wrap_dep(
 ) -> RunnerDeployment:
     if not kwargs:
         kwargs = {}
-    path = "file://" + path
+    path = path if path.startswith(r"\\") else ("file://" + path)
     match mode:
         case "script":
             storage = RemoteStorageScript(path)

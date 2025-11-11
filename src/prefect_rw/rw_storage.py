@@ -163,7 +163,7 @@ class RemoteStorageDir:  # noqa: PLW1641
     ) -> None:
         self._path = Path(path)
         self._settings = settings
-        self._logger = get_logger("runner.storage.remote-storage-rw-script")
+        self._logger = get_logger("runner.storage.remote-storage-rw-dir")
         self._storage_base_path = Path(os.environ.get("_CWD", ""))
         self._pull_interval = pull_interval
 
@@ -206,7 +206,8 @@ class RemoteStorageDir:  # noqa: PLW1641
     @property
     def _remote_path(self) -> Path:
         """The remote file path to pull contents from remote storage to."""
-        _, netloc, urlpath, _, _ = urlsplit(self._path.as_posix())
+        path = str(self._path) if str(self._path).startswith(r"\\") else self._path.as_posix()
+        _, netloc, urlpath, _, _ = urlsplit(path)
         return Path(netloc) / Path(urlpath.lstrip("/"))
 
     async def pull_code(self) -> None:
