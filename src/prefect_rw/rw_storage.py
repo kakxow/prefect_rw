@@ -153,7 +153,7 @@ class RemoteStorageScript:  # noqa: PLW1641
 
 
 class RemoteStorageDir:  # noqa: PLW1641
-    """Pulls the script from a remote storage location to the local filesystem."""
+    """Pulls the directory from a remote storage location to the local filesystem."""
 
     def __init__(  # noqa: D107
         self,
@@ -163,7 +163,7 @@ class RemoteStorageDir:  # noqa: PLW1641
     ) -> None:
         self._path = Path(path)
         self._settings = settings
-        self._logger = get_logger("runner.storage.remote-storage-rw-script")
+        self._logger = get_logger("runner.storage.remote-storage-rw-dir")
         self._storage_base_path = Path(os.environ["_CWD"])
         self._pull_interval = pull_interval
 
@@ -228,6 +228,7 @@ class RemoteStorageDir:  # noqa: PLW1641
                     self._filesystem.get,  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType] missing type stubs
                     remote_path,
                     str(self.destination) + "/",
+                    recursive=True,
                 ),
             )
         except Exception as exc:
