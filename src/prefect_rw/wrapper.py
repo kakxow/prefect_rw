@@ -1,7 +1,7 @@
 import os
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from prefect import deploy as _deploy
 from prefect import flow
@@ -15,7 +15,8 @@ _deployments = []
 def _wrap_dep(
     name: str,
     path: str,
-    entrypoint: str,
+    function_name: str,
+    mode: Literal["script", "dir"],
     work_pool_name: str,
     parameters: dict[str, Any] | None,
     concurrency_limit: int,
@@ -27,12 +28,18 @@ def _wrap_dep(
     with tempfile.TemporaryDirectory() as tempdir:
         os.environ["_CWD"] = tempdir
         path = "file://" + path
-        storage = RemoteStorageScript(path) if path.endswith(".py") else RemoteStorageDir(path, entrypoint)
+        match mode:
+            case "script":
+                storage = RemoteStorageScript(path)
+            case "dir":
+                storage = RemoteStorageDir(path)
+            case _:
+                raise ValueError
         p = Path(path)
 
         return flow.from_source(
             storage,
-            f"{p.name}:{entrypoint}",
+            f"{p.name}:{function_name}",
         ).to_deployment(
             name,
             work_pool_name=work_pool_name,
@@ -45,26 +52,28 @@ def _wrap_dep(
 def add_deployment(
     name: str,
     path: str,
-    entrypoint: str,
+    function_name: str,
+    mode: Literal["script", "dir"],
     work_pool_name: str = "main",
     parameters: dict[str, Any] | None = None,
     concurrency_limit: int = 2,
     **kwargs: dict[str, Any],
 ) -> None:
-    dep = _wrap_dep(name, path, entrypoint, work_pool_name, parameters, concurrency_limit, **kwargs)
+    dep = _wrap_dep(name, path, function_name, mode, work_pool_name, parameters, concurrency_limit, **kwargs)
     _deployments.append(dep)
 
 
 def deploy_one(
     name: str,
     path: str,
-    entrypoint: str,
+    function_name: str,
+    mode: Literal["script", "dir"],
     work_pool_name: str = "main",
     parameters: dict[str, Any] | None = None,
     concurrency_limit: int = 2,
     **kwargs: dict[str, Any],
 ) -> None:
-    dep = _wrap_dep(name, path, entrypoint, work_pool_name, parameters, concurrency_limit, **kwargs)
+    dep = _wrap_dep(name, path, function_name, mode, work_pool_name, parameters, concurrency_limit, **kwargs)
     dep.apply(work_pool_name=work_pool_name)
 
 

@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from prefect.logging import get_logger
@@ -17,9 +16,9 @@ async def pull_dir_from_remote_storage(path: str, **settings: Any) -> dict[str, 
 
     await storage.pull_code()
 
-    directory = str(storage.destination.relative_to(Path.cwd()))
-    deployment_logger.info(f"Pulled code from {path!r} into {directory!r}")  # noqa: G004
-    return {"directory": directory}
+    directory = str(storage.destination)
+    deployment_logger.info(f"Pulled code from {path!r} into {storage.destination!r}")  # noqa: G004
+    return {"directory": directory, "dir": storage.destination.name}
 
 
 async def pull_script_from_remote_storage(path: str, **settings: Any) -> dict[str, Any]:  # noqa: ANN401
