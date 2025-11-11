@@ -46,7 +46,7 @@ class RemoteStorageScript:  # noqa: PLW1641
         self._path = Path(path)
         self._settings = settings
         self._logger = get_logger("runner.storage.remote-storage-rw-script")
-        self._storage_base_path = Path(os.environ["_CWD"])
+        self._storage_base_path = Path(os.environ.get("_CWD", ""))
         self._pull_interval = pull_interval
 
     @property
@@ -153,7 +153,7 @@ class RemoteStorageScript:  # noqa: PLW1641
 
 
 class RemoteStorageDir:  # noqa: PLW1641
-    """Pulls the directory from a remote storage location to the local filesystem."""
+    """Pulls the script from a remote storage location to the local filesystem."""
 
     def __init__(  # noqa: D107
         self,
@@ -163,8 +163,8 @@ class RemoteStorageDir:  # noqa: PLW1641
     ) -> None:
         self._path = Path(path)
         self._settings = settings
-        self._logger = get_logger("runner.storage.remote-storage-rw-dir")
-        self._storage_base_path = Path(os.environ["_CWD"])
+        self._logger = get_logger("runner.storage.remote-storage-rw-script")
+        self._storage_base_path = Path(os.environ.get("_CWD", ""))
         self._pull_interval = pull_interval
 
     @property
@@ -211,14 +211,15 @@ class RemoteStorageDir:  # noqa: PLW1641
 
     async def pull_code(self) -> None:
         """Pull contents from remote storage to the local filesystem."""
+        dest = self.destination.parent
         self._logger.debug(
             "Pulling contents from remote storage '%s' to '%s'...",
             self._path,
-            self.destination,
+            dest,
         )
 
-        if not self.destination.exists():
-            self.destination.mkdir(parents=True, exist_ok=True)
+        if not dest.exists():
+            dest.mkdir(parents=True, exist_ok=True)
 
         remote_path = str(self._remote_path.parent)
 
@@ -227,12 +228,12 @@ class RemoteStorageDir:  # noqa: PLW1641
                 create_call(
                     self._filesystem.get,  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType] missing type stubs
                     remote_path,
-                    str(self.destination) + "/",
+                    str(dest) + "/",
                     recursive=True,
                 ),
             )
         except Exception as exc:
-            msg = f"Failed to pull contents from remote storage {self._path!r} to {self.destination!r}"
+            msg = f"Failed to pull contents from remote storage {self._path!r} to {dest!r}"
             raise RuntimeError(msg) from exc
         if os.environ.get("WORKER_RUNNING"):
             try:

@@ -1,5 +1,3 @@
-import os
-import tempfile
 from pathlib import Path
 from typing import Any, Literal
 
@@ -24,29 +22,26 @@ def _wrap_dep(
 ) -> RunnerDeployment:
     if not kwargs:
         kwargs = {}
+    path = "file://" + path
+    match mode:
+        case "script":
+            storage = RemoteStorageScript(path)
+        case "dir":
+            storage = RemoteStorageDir(path)
+        case _:
+            raise ValueError
+    p = Path(path)
 
-    with tempfile.TemporaryDirectory() as tempdir:
-        os.environ["_CWD"] = tempdir
-        path = "file://" + path
-        match mode:
-            case "script":
-                storage = RemoteStorageScript(path)
-            case "dir":
-                storage = RemoteStorageDir(path)
-            case _:
-                raise ValueError
-        p = Path(path)
-
-        return flow.from_source(
-            storage,
-            f"{p.name}:{function_name}",
-        ).to_deployment(
-            name,
-            work_pool_name=work_pool_name,
-            parameters=parameters,
-            concurrency_limit=concurrency_limit,
-            **kwargs,
-        )  # pyright: ignore[reportReturnType]
+    return flow.from_source(
+        storage,
+        f"{p.name}:{function_name}",
+    ).to_deployment(
+        name,
+        work_pool_name=work_pool_name,
+        parameters=parameters,
+        concurrency_limit=concurrency_limit,
+        **kwargs,
+    )  # pyright: ignore[reportReturnType]
 
 
 def add_deployment(

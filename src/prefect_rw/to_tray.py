@@ -1,6 +1,6 @@
 import asyncio
-import ctypes
 import threading
+import time
 from threading import Thread
 
 import pystray
@@ -11,6 +11,7 @@ from prefect_rw.rw_process_worker import worker_start
 
 RUNNING_TID = None
 WORKER_ARGS = {}
+THE_LOOP = None
 
 
 def create_image(width: int, height: int, color1: _Ink | None, color2: _Ink) -> Image.Image:
@@ -23,27 +24,18 @@ def create_image(width: int, height: int, color1: _Ink | None, color2: _Ink) -> 
     return image
 
 
-def raise_in_thread(tid: int, exctype: type) -> None:
-    """Raise an exception in the threads with id tid."""
-    # https://stackoverflow.com/a/325528
-    res = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(tid), ctypes.py_object(exctype))
-    if res == 0:
-        msg = "invalid thread id"
-        raise ValueError(msg)
-    if res != 1:
-        # "if it returns a number greater than one, you're in trouble,
-        # and you should call it again with exc=NULL to revert the effect"
-        ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(tid), None)
-        msg = "PyThreadState_SetAsyncExc failed"
-        raise SystemError(msg)
-
-
 def w() -> None:
-    asyncio.run(worker_start(**WORKER_ARGS))
+    asyncio.set_event_loop(THE_LOOP)
+    try:
+        THE_LOOP.run_until_complete(worker_start(**WORKER_ARGS))
+    finally:
+        THE_LOOP.close()
 
 
 def _start(_icon: pystray._base.Icon) -> None:
     """Запускает воркера."""
+    global THE_LOOP
+    THE_LOOP = asyncio.new_event_loop()
     global RUNNING_TID  # noqa: PLW0603
     t = Thread(target=w, daemon=True)
     t.start()
@@ -54,25 +46,29 @@ def join_thread(n: int = 5) -> None:
     for _i in range(n):
         if RUNNING_TID is None:
             return
-        raise_in_thread(RUNNING_TID, KeyboardInterrupt)
         t = next((t for t in threading.enumerate() if t.ident == RUNNING_TID), None)
         if t:
             print("thread is still present, joining")
-            t.join(15)
+            t.join()
             if t.is_alive():
                 print("thread is still alive after join")
             else:
-                break
+                print("thread joined")
+                return
 
 
 def _stop(_icon: pystray._base.Icon) -> None:
     """Останавливает воркера."""
+    for task in asyncio.all_tasks(THE_LOOP):
+        task.cancel()
+    THE_LOOP.call_soon_threadsafe(THE_LOOP.stop)
     join_thread()
 
 
 def restart(icon: pystray._base.Icon) -> None:
     """Перезапускает воркера."""
     _stop(icon)
+    time.sleep(2)
     _start(icon)
 
 
@@ -113,6 +109,7 @@ def main(
     _start(icon)
 
     icon.run()
+    icon = None
 
 
 if __name__ == "__main__":
