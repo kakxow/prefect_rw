@@ -1,11 +1,11 @@
 [project]
 name = "prefect-rw"
-version = "0.1.2"
+version = "0.1.4"
 description = "Add your description here"
 readme = "README.md"
 authors = [{ name = "Maksim Sukhanov", email = "kakxow@gmail.com" }]
 requires-python = ">=3.11"
-dependencies = ["prefect>=3.4.14"]
+dependencies = ["prefect>=3.4.14", "psutil>=7.1.3", "pystray>=0.19.5"]
 license = "WTFPL"
 
 [build-system]

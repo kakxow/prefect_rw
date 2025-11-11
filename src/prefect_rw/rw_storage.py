@@ -6,13 +6,32 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-import anyio
 import fsspec
 from prefect._internal.concurrency.api import create_call, from_async
 from prefect.blocks.core import Block
 from prefect.logging.loggers import get_logger
 from prefect.utilities.collections import visit_collection
-from prefect.utilities.processutils import run_process
+
+
+async def uv_sync(destination: Path, _path: Path) -> None:
+    """Create a virtual environment and install dependencies."""
+    init_command = ["uv", "init", "--bare", "--vcs", "none"]
+    p = await from_async.wait_for_call_in_new_thread(
+        create_call(subprocess.run, init_command, cwd=destination, env={**os.environ}),
+    )
+    p.check_returncode()
+    venv_command = ["uv", "venv", "--clear", "--link-mode", "copy"]
+    p = await from_async.wait_for_call_in_new_thread(
+        create_call(subprocess.run, venv_command, cwd=destination, env={**os.environ}),
+    )
+    p.check_returncode()
+
+    sync_command = ["uv", "sync", "--link-mode", "copy", "--active", "--script", _path.name]
+    env = {**os.environ, "VIRTUAL_ENV": (destination / ".venv").as_posix()}
+    p = await from_async.wait_for_call_in_new_thread(
+        create_call(subprocess.run, sync_command, env=env, cwd=destination),
+    )
+    p.check_returncode()
 
 
 class RemoteStorageDir:  # noqa: PLW1641
@@ -128,40 +147,6 @@ class RemoteStorageDir:  # noqa: PLW1641
             msg = "Failed to install dependencies"
             raise RuntimeError(msg) from exc
 
-    async def uv_sync(self) -> None:
-        """Create a virtual environment and install dependencies."""
-        venv_command = ["uv", "venv"]
-        process = await run_process(
-            command=venv_command,
-            stream_output=True,
-            task_status=anyio.TASK_STATUS_IGNORED,
-            task_status_handler=lambda process: process,
-            cwd=self.destination,
-        )
-        if process.returncode is None:
-            msg = "Process exited with None return code"
-            raise RuntimeError(msg)
-        if process.returncode == 0:
-            msg = "Process exited with error"
-            raise RuntimeError(msg)
-
-        sync_command = ["uv", "sync", "--active", "--script", self.entrypoint]
-        env = {**os.environ, "VIRTUAL_ENV": str(self.destination / ".venv")}
-        process = await run_process(
-            command=sync_command,
-            stream_output=True,
-            task_status=anyio.TASK_STATUS_IGNORED,
-            task_status_handler=lambda process: process,
-            cwd=self.destination,
-            env=env,
-        )
-        if process.returncode is None:
-            msg = "Process exited with None return code"
-            raise RuntimeError(msg)
-        if process.returncode == 0:
-            msg = "Process exited with error"
-            raise RuntimeError(msg)
-
     def to_pull_step(self) -> dict[str, Any]:
         """Return a dictionary representation of the storage object that can be used as a deployment pull step."""
 
@@ -209,7 +194,7 @@ class RemoteStorageScript:  # noqa: PLW1641
 
     @property
     def _filesystem(self) -> fsspec.AbstractFileSystem:
-        scheme, _, _, _, _ = urlsplit(str(self._path))
+        scheme, _, _, _, _ = urlsplit(self._path.as_posix())
 
         def replace_blocks_with_values(obj: Any) -> Any:  # noqa: ANN401
             if isinstance(obj, Block):
@@ -246,10 +231,10 @@ class RemoteStorageScript:  # noqa: PLW1641
     @property
     def _remote_path(self) -> Path:
         """The remote file path to pull contents from remote storage to."""
-        _, netloc, urlpath, _, _ = urlsplit(str(self._path))
+        _, netloc, urlpath, _, _ = urlsplit(self._path.as_posix())
         return Path(netloc) / Path(urlpath.lstrip("/"))
 
-    async def pull_code(self) -> dict[str, str]:
+    async def pull_code(self) -> None:
         """Pull contents from remote storage to the local filesystem."""
         self._logger.debug(
             "Pulling contents from remote storage '%s' to '%s'...",
@@ -275,31 +260,10 @@ class RemoteStorageScript:  # noqa: PLW1641
             raise RuntimeError(msg) from exc
         if os.environ.get("WORKER_RUNNING"):
             try:
-                await self.uv_sync()
+                await uv_sync(self.destination, self._path)
             except Exception as exc:
                 msg = "Failed to install dependencies"
                 raise RuntimeError(msg) from exc
-        return {"tmp": str(self.destination)}
-
-    async def uv_sync(self) -> None:
-        """Create a virtual environment and install dependencies."""
-        init_command = ["uv", "init", "--bare", "--vcs", "none"]
-        p = await from_async.wait_for_call_in_new_thread(
-            create_call(subprocess.run, init_command, cwd=self.destination, env={**os.environ}),
-        )
-        p.check_returncode()
-        venv_command = ["uv", "venv", "--clear", "--link-mode", "copy"]
-        p = await from_async.wait_for_call_in_new_thread(
-            create_call(subprocess.run, venv_command, cwd=self.destination, env={**os.environ}),
-        )
-        p.check_returncode()
-
-        sync_command = ["uv", "sync", "--link-mode", "copy", "--active", "--script", self._path.name]
-        env = {**os.environ, "VIRTUAL_ENV": (self.destination / ".venv").as_posix()}
-        p = await from_async.wait_for_call_in_new_thread(
-            create_call(subprocess.run, sync_command, env=env, cwd=self.destination),
-        )
-        p.check_returncode()
 
     def to_pull_step(self) -> dict[str, Any]:
         """Return a dictionary representation of the storage object that can be used as a deployment pull step."""

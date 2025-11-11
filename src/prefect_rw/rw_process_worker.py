@@ -1,4 +1,6 @@
+import asyncio
 import contextlib
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -7,7 +9,12 @@ from typing import TYPE_CHECKING
 import anyio
 import anyio.abc
 from prefect import get_client
+from prefect.cli.root import app
 from prefect.deployments.steps.core import run_steps
+from prefect.settings import PREFECT_WORKER_HEARTBEAT_SECONDS, PREFECT_WORKER_PREFETCH_SECONDS
+from prefect.utilities.processutils import (
+    setup_signal_handlers_worker,
+)
 from prefect.workers.process import ProcessJobConfiguration, ProcessWorker, ProcessWorkerResult
 
 if TYPE_CHECKING:
@@ -57,8 +64,46 @@ async def run(
             task_status=task_status,
         )
 
-        if process is None or process.returncode is None:
+        if process is None or process.returncode is None:  # pyright: ignore[reportAttributeAccessIssue]
             msg = "Failed to start flow run process."
             raise RuntimeError(msg)
 
-    return ProcessWorkerResult(status_code=process.returncode, identifier=str(process.pid))
+    return ProcessWorkerResult(status_code=process.returncode, identifier=str(process.pid))  # pyright: ignore[reportAttributeAccessIssue]
+
+
+async def worker_start(
+    worker_name: str,
+    work_pool_name: str,
+    work_queues: list[str] | None = None,
+    limit: int | None = None,
+    prefetch_seconds: int | None = None,  # pyright: ignore[reportArgumentType]
+    base_job_template: str | None = None,
+    *,
+    run_once: bool = False,
+    with_healthcheck: bool = True,
+) -> None:
+    ProcessWorker.run = run
+    worker_process_id = os.getpid()
+    setup_signal_handlers_worker(worker_process_id, "the Process worker", app.console.print)
+    template_contents = None
+    if base_job_template is not None:
+        with open(base_job_template, encoding="utf8") as fp:  # noqa: ASYNC230
+            template_contents = json.load(fp=fp)
+
+    worker = ProcessWorker(
+        name=worker_name,
+        work_pool_name=work_pool_name,
+        work_queues=work_queues,
+        limit=limit,
+        prefetch_seconds=prefetch_seconds if prefetch_seconds else int(PREFECT_WORKER_PREFETCH_SECONDS.value()),
+        heartbeat_interval_seconds=int(PREFECT_WORKER_HEARTBEAT_SECONDS.value()),
+        base_job_template=template_contents,
+    )
+    try:
+        await worker.start(
+            run_once=run_once,
+            with_healthcheck=with_healthcheck,
+            printer=app.console.print,
+        )
+    except asyncio.CancelledError:
+        app.console.print(f"Worker {worker.name!r} stopped!", style="yellow")
